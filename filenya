@@ -1,0 +1,80 @@
+<?php
+header('Content-Type: application/json');
+
+// 1. Memastikan metode yang digunakan adalah POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Metode tidak diizinkan'
+    ]);
+    exit;
+}
+
+// 2. Membaca dan memvalidasi data JSON
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (!is_array($data)) {
+    http_response_code(400);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Format JSON tidak valid'
+    ]);
+    exit;
+}
+
+// 3. Memeriksa data yang wajib diisi
+$student_id = $data['student_id'] ?? '';
+$service = trim($data['service'] ?? '');
+$email = trim($data['email'] ?? '');
+
+if (
+    !is_numeric($student_id) ||
+    $service === '' ||
+    !filter_var($email, FILTER_VALIDATE_EMAIL)
+) {
+    http_response_code(400);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Data yang dimasukkan tidak valid'
+    ]);
+    exit;
+}
+
+try {
+    // 4. Mengambil konfigurasi database dari environment variable
+    $pdo = new PDO(
+        'mysql:host=' . getenv('DB_HOST') .
+        ';dbname=' . getenv('DB_NAME'),
+        getenv('DB_USER'),
+        getenv('DB_PASS'),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+
+    // 5. Menggunakan prepared statement agar lebih aman
+    $sql = "INSERT INTO requests (student_id, service, email)
+            VALUES (:student_id, :service, :email)";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':student_id' => $student_id,
+        ':service' => $service,
+        ':email' => $email
+    ]);
+
+    // 6. Mengirim respons jika data berhasil disimpan
+    http_response_code(201);
+    echo json_encode([
+        'status' => 'success',
+        'message' => 'Data berhasil disimpan'
+    ]);
+
+} catch (PDOException $e) {
+    // 7. Menangani error tanpa membocorkan detail database
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Terjadi kesalahan pada server'
+    ]);
+}
+?>
